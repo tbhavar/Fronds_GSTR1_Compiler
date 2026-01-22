@@ -2,40 +2,65 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GSTR1 Utility - CA Tanmay Rajendra Bhavar</title>
+    <title>GSTR1 Table Generator - CA Tanmay Rajendra Bhavar</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 40px; background: #f0f2f5; color: #333; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-        h2 { color: #1a73e8; border-bottom: 3px solid #1a73e8; padding-bottom: 10px; }
-        .upload-section { border: 2px dashed #1a73e8; padding: 50px; text-align: center; margin: 20px 0; border-radius: 10px; background: #f8fbff; cursor: pointer; transition: 0.3s; }
-        .upload-section:hover { background: #edf4fe; }
-        #status { margin: 20px 0; font-weight: 600; color: #5f6368; }
-        .btn-group { display: flex; gap: 10px; }
-        button { flex: 1; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; display: none; }
-        #b2bBtn { background: #1a73e8; color: white; }
-        #b2csBtn { background: #34a853; color: white; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 30px; background: #f8f9fa; }
+        .container { max-width: 1100px; margin: auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { color: #2c3e50; border-bottom: 3px solid #007bff; padding-bottom: 10px; }
+        .upload-section { border: 2px dashed #007bff; padding: 30px; text-align: center; background: #f0f7ff; cursor: pointer; border-radius: 8px; margin-bottom: 20px; }
+        .table-container { overflow-x: auto; margin-top: 20px; display: none; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        th { background: #007bff; color: white; padding: 10px; text-align: left; position: sticky; top: 0; }
+        td { border: 1px solid #dee2e6; padding: 8px; }
+        tr:nth-child(even) { background: #f2f2f2; }
+        .controls { display: flex; gap: 10px; margin: 20px 0; }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn-copy { background: #28a745; color: white; }
+        .btn-switch { background: #6c757d; color: white; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>GSTR1 Auto-Compiler</h2>
-    <p>Professional Utility for <strong>CA Tanmay Rajendra Bhavar</strong></p>
+    <h2>GSTR1 Data Extractor</h2>
+    <p>Upload Horticult Invoices to view formatted GSTR1 tables.</p>
     
     <div class="upload-section" onclick="document.getElementById('fileInput').click()">
-        <strong>Click to select 50-100 PDF Invoices</strong>
-        <p style="font-size: 0.9em; color: #666;">Data is processed locally and never uploaded to any server.</p>
+        <strong>Click to Batch Upload PDFs</strong>
         <input type="file" id="fileInput" multiple accept=".pdf" style="display:none">
     </div>
 
-    <div id="status">Ready to process...</div>
-    
-    <div class="btn-group">
-        <button id="b2bBtn">Download B2B Template</button>
-        <button id="b2csBtn">Download B2CS Template</button>
+    <div id="status"></div>
+
+    <div class="controls" id="controls" style="display:none;">
+        <button class="btn btn-switch" onclick="toggleTable('b2b')">Show B2B Table</button>
+        <button class="btn btn-switch" onclick="toggleTable('b2cs')">Show B2CS Table</button>
+        <button class="btn btn-copy" onclick="copyTable()">Copy Visible Table</button>
+    </div>
+
+    <div id="b2bContainer" class="table-container">
+        <h3>B2B (Business to Business)</h3>
+        <table id="b2bTable">
+            <thead>
+                <tr>
+                    <th>Receiver GSTIN</th><th>Receiver Name</th><th>Invoice No.</th><th>Date</th><th>Value</th><th>POS</th><th>Taxable Value</th><th>Rate</th>
+                </tr>
+            </thead>
+            <tbody id="b2bBody"></tbody>
+        </table>
+    </div>
+
+    <div id="b2csContainer" class="table-container">
+        <h3>B2CS (Business to Consumer Small)</h3>
+        <table id="b2csTable">
+            <thead>
+                <tr>
+                    <th>Type</th><th>Place Of Supply</th><th>Rate</th><th>Taxable Value</th><th>Cess</th>
+                </tr>
+            </thead>
+            <tbody id="b2csBody"></tbody>
+        </table>
     </div>
 </div>
 
@@ -43,26 +68,35 @@
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-    let masterData = [];
-
     document.getElementById('fileInput').addEventListener('change', async (e) => {
         const files = e.target.files;
-        if (files.length === 0) return;
+        if (!files.length) return;
 
-        masterData = [];
-        const status = document.getElementById('status');
-        const b2bBtn = document.getElementById('b2bBtn');
-        const b2csBtn = document.getElementById('b2csBtn');
+        const b2bBody = document.getElementById('b2bBody');
+        const b2csBody = document.getElementById('b2csBody');
+        b2bBody.innerHTML = ''; b2csBody.innerHTML = '';
+        
+        document.getElementById('status').innerText = "Processing...";
 
-        for (let i = 0; i < files.length; i++) {
-            status.innerText = `Scanning: ${i + 1} / ${files.length}`;
-            const text = await extractText(files[i]);
-            masterData.push(parseForGST(text));
+        for (let file of files) {
+            const text = await extractText(file);
+            const data = parseData(text);
+            
+            // Add to B2B Table
+            b2bBody.innerHTML += `<tr>
+                <td></td><td>${data.customer}</td><td>${data.invNo}</td><td>${data.invDate}</td>
+                <td>${data.totalValue}</td><td>${data.pos}</td><td>${data.taxableValue}</td><td>18%</td>
+            </tr>`;
+
+            // Add to B2CS Table
+            b2csBody.innerHTML += `<tr>
+                <td>OE</td><td>${data.pos}</td><td>18%</td><td>${data.taxableValue}</td><td>0</td>
+            </tr>`;
         }
 
-        status.innerText = `Successfully scanned ${files.length} invoices. Select export format:`;
-        b2bBtn.style.display = 'block';
-        b2csBtn.style.display = 'block';
+        document.getElementById('status').innerText = `Processed ${files.length} files.`;
+        document.getElementById('controls').style.display = 'flex';
+        toggleTable('b2cs'); // Default view
     });
 
     async function extractText(file) {
@@ -77,62 +111,39 @@
         return text;
     }
 
-    function parseForGST(text) {
-        return {
-            invNo: text.match(/Order\s(R\d+)/)?.[1] || "",
-            invDate: formatDate(text.match(/Order date:\s*([\d-]+)/)?.[1]),
-            customer: text.match(/Billing Address\s*(.*?)\s*Bhundimuhan/)?.[1] || "Unregistered",
-            pos: text.match(/Balangir\s*(.*?)\s*India/)?.[1]?.trim() || "00-Unknown",
-            taxableValue: parseFloat(text.match(/Item Total:\s*₹?([\d,.]+)/)?.[1]?.replace(/,/g, '') || 0),
-            totalValue: parseFloat(text.match(/Order Total:\s*₹?([\d,.]+)/)?.[1]?.replace(/,/g, '') || 0)
-        };
+    function parseData(text) {
+        [cite_start]// Based on the Horticult Airway Bill format provided [cite: 12, 20, 26]
+        const invNo = text.match(/Order\s(R\d+)/)?.[1] || "N/A";
+        const rawDate = text.match(/Order date:\s*([\d-]+)/)?.[1] || "";
+        const invDate = rawDate.split('-').reverse().join('-'); // Convert YYYY-MM-DD to DD-MM-YYYY
+        
+        [cite_start]// Extract customer name - usually follows Billing Address [cite: 3, 4]
+        const customer = text.match(/Billing Address\s+([A-Za-z\s]+?)\s+Bhundimuhan/)?.[1] || "Unregistered";
+        const pos = text.match(/767048\s+Balangir\s+([A-Za-z\s]+?)\s+India/)?.[1]?.trim() || "ORISSA";
+        
+        const taxable = text.match(/Item Total:\s*₹?([\d,.]+)/)?.[1]?.replace(/,/g, '') || "0";
+        const total = text.match(/Order Total:\s*₹?([\d,.]+)/)?.[1]?.replace(/,/g, '') || "0";
+
+        return { invNo, invDate, customer, pos, taxableValue: taxable, totalValue: total };
     }
 
-    function formatDate(dateStr) {
-        if (!dateStr) return "";
-        const [y, m, d] = dateStr.split('-');
-        return `${d}-${m}-${y}`; // DD-MM-YYYY format for GST Tool
+    function toggleTable(type) {
+        document.getElementById('b2bContainer').style.display = type === 'b2b' ? 'block' : 'none';
+        document.getElementById('b2csContainer').style.display = type === 'b2cs' ? 'block' : 'none';
     }
 
-    // B2B Export Logic
-    document.getElementById('b2bBtn').addEventListener('click', () => {
-        const b2bRows = masterData.map(d => ({
-            "Receiver GSTIN/UIN": "", // Leave blank for manual entry if unknown
-            "Receiver Name": d.customer,
-            "Invoice Number": d.invNo,
-            "Invoice Date": d.invDate,
-            "Invoice Value": d.totalValue,
-            "Place Of Supply": d.pos,
-            "Reverse Charge": "N",
-            "Applicable % of Tax Rate": "",
-            "Invoice Type": "Regular B2B",
-            "E-Commerce GSTIN": "",
-            "Rate": 18, // Defaulting to 18%, adjust if necessary
-            "Taxable Value": d.taxableValue
-        }));
-        downloadExcel(b2bRows, "GSTR1_B2B");
-    });
-
-    // B2CS Export Logic
-    document.getElementById('b2csBtn').addEventListener('click', () => {
-        const b2csRows = masterData.map(d => ({
-            "Type": "OE",
-            "Place Of Supply": d.pos,
-            "Applicable % of Tax Rate": "",
-            "Rate": 18,
-            "Taxable Value": d.taxableValue,
-            "Cess Amount": 0,
-            "E-Commerce GSTIN": ""
-        }));
-        downloadExcel(b2csRows, "GSTR1_B2CS");
-    });
-
-    function downloadExcel(data, fileName) {
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
-        XLSX.writeFile(wb, `${fileName}.xlsx`);
+    function copyTable() {
+        const activeTable = document.querySelector('.table-container[style*="display: block"] table');
+        if (!activeTable) return;
+        
+        const range = document.createRange();
+        range.selectNode(activeTable);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        alert("Table copied! You can now paste it directly into Excel.");
     }
 </script>
+
 </body>
 </html>
